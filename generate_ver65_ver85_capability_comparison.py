@@ -84,7 +84,9 @@ def get_blank_layout(prs):
     raise ValueError("Blank slide layout not found in template")
 
 
-def build_slide(template_path=TEMPLATE, output_path=OUTFILE):
+def build_slide(template_path=None, output_path=None):
+    template_path = template_path or TEMPLATE
+    output_path = output_path or OUTFILE
     prs = Presentation(str(template_path))
     if len(prs.slides) > 0:
         raise ValueError("Template must not contain slides")
