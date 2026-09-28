@@ -3,10 +3,12 @@ from pptx.util import Inches, Pt
 from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE, MSO_CONNECTOR
 from pptx.enum.text import PP_ALIGN, MSO_VERTICAL_ANCHOR
 from pptx.dml.color import RGBColor
+from pathlib import Path
 
 
-TEMPLATE = "slide_template.pptx"
-OUTFILE = "ver65_ver85_capability_comparison.pptx"
+BASE_DIR = Path(__file__).resolve().parent
+TEMPLATE = BASE_DIR / "slide_template.pptx"
+OUTFILE = BASE_DIR / "ver65_ver85_capability_comparison.pptx"
 FONT = "Yu Gothic"
 
 
@@ -79,9 +81,16 @@ def add_line(slide, x1, y1, x2, y2, color, width=2.0):
     return line
 
 
+def get_blank_layout(prs):
+    for layout in prs.slide_layouts:
+        if layout.name.lower() == "blank":
+            return layout
+    raise ValueError("Blank slide layout not found in template")
+
+
 def build_slide():
-    prs = Presentation(TEMPLATE)
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    prs = Presentation(str(TEMPLATE))
+    slide = prs.slides.add_slide(get_blank_layout(prs))
 
     bg = slide.background
     bg.fill.solid()
@@ -189,7 +198,7 @@ def build_slide():
             "未対応の領域：ユースケース実現 / 不具合 / 想定外入力 / 分類・分解が難しい複数問い",
             gray_lt, gray, font_size=15, bold=True, color=gray)
 
-    prs.save(OUTFILE)
+    prs.save(str(OUTFILE))
 
 
 if __name__ == "__main__":
