@@ -5,6 +5,7 @@ from pptx.enum.text import PP_ALIGN, MSO_VERTICAL_ANCHOR
 from pptx.dml.color import RGBColor
 
 
+TEMPLATE = "slide_template.pptx"
 OUTFILE = "ver65_ver85_capability_comparison.pptx"
 FONT = "Yu Gothic"
 
@@ -78,11 +79,15 @@ def add_line(slide, x1, y1, x2, y2, color, width=2.0):
     return line
 
 
+def clear_slide(slide):
+    for shape in list(slide.shapes):
+        slide.shapes._spTree.remove(shape._element)
+
+
 def build_slide():
-    prs = Presentation()
-    prs.slide_width = Inches(13.333)
-    prs.slide_height = Inches(7.5)
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    prs = Presentation(TEMPLATE)
+    slide = prs.slides[0] if prs.slides else prs.slides.add_slide(prs.slide_layouts[6])
+    clear_slide(slide)
 
     bg = slide.background
     bg.fill.solid()
