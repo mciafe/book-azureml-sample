@@ -1,6 +1,6 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from zipfile import ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile
 import xml.etree.ElementTree as ET
 
 from pptx import Presentation
@@ -99,6 +99,15 @@ def remove_if_exists(path):
         path.unlink()
 
 
+def remove_matching(parent, predicate):
+    removed = []
+    for child in list(parent):
+        if predicate(child):
+            parent.remove(child)
+            removed.append(child)
+    return removed
+
+
 def write_normalized_template(source_path, target_path):
     with TemporaryDirectory() as tmp_dir:
         tmp_root = Path(tmp_dir)
@@ -110,23 +119,20 @@ def write_normalized_template(source_path, target_path):
 
         root_rels = ET.parse(tmp_root / "_rels/.rels")
         root_rels_root = root_rels.getroot()
-        for rel in list(root_rels_root):
-            if rel.attrib.get("Target") == "docProps/thumbnail.jpeg":
-                root_rels_root.remove(rel)
+        remove_matching(root_rels_root, lambda rel: rel.attrib.get("Target") == "docProps/thumbnail.jpeg")
         root_rels.write(tmp_root / "_rels/.rels", encoding="utf-8", xml_declaration=True)
 
         pres_rels_path = tmp_root / "ppt/_rels/presentation.xml.rels"
         pres_rels = ET.parse(pres_rels_path)
         pres_rels_root = pres_rels.getroot()
         slide_targets = []
-        for rel in list(pres_rels_root):
-            rel_type = rel.attrib.get("Type", "")
-            target = rel.attrib.get("Target", "")
-            if rel_type.endswith("/slide"):
-                slide_targets.append(target)
-                pres_rels_root.remove(rel)
-            elif rel_type.endswith("/printerSettings"):
-                pres_rels_root.remove(rel)
+        for rel in remove_matching(
+            pres_rels_root,
+            lambda rel: rel.attrib.get("Type", "").endswith("/slide")
+            or rel.attrib.get("Type", "").endswith("/printerSettings"),
+        ):
+            if rel.attrib.get("Type", "").endswith("/slide"):
+                slide_targets.append(rel.attrib.get("Target", ""))
         pres_rels.write(pres_rels_path, encoding="utf-8", xml_declaration=True)
 
         for target in slide_targets:
@@ -146,12 +152,10 @@ def write_normalized_template(source_path, target_path):
         content_types = ET.parse(content_types_path)
         content_root = content_types.getroot()
         slide_part_names = {f"/ppt/{target}" for target in slide_targets}
-        for override in list(content_root):
-            if override.attrib.get("PartName") in slide_part_names:
-                content_root.remove(override)
+        remove_matching(content_root, lambda override: override.attrib.get("PartName") in slide_part_names)
         content_types.write(content_types_path, encoding="utf-8", xml_declaration=True)
 
-        with ZipFile(target_path, "w") as archive:
+        with ZipFile(target_path, "w", compression=ZIP_DEFLATED, compresslevel=9) as archive:
             for path in sorted(tmp_root.rglob("*")):
                 if path.is_file():
                     archive.write(path, path.relative_to(tmp_root))
