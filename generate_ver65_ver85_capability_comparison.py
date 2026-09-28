@@ -86,6 +86,8 @@ def get_blank_layout(prs):
 
 def build_slide(template_path=TEMPLATE, output_path=OUTFILE):
     prs = Presentation(str(template_path))
+    if prs.slides:
+        raise ValueError("Template must not contain slides")
     slide = prs.slides.add_slide(get_blank_layout(prs))
 
     bg = slide.background
