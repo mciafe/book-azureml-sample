@@ -99,6 +99,13 @@ def remove_if_exists(path):
         path.unlink()
 
 
+def resolve_package_target(tmp_root, base_dir, target):
+    normalized = target.lstrip("/")
+    if target.startswith("/"):
+        return tmp_root / normalized
+    return base_dir / normalized
+
+
 def remove_matching(parent, predicate):
     removed = []
     for child in list(parent):
@@ -137,7 +144,7 @@ def write_normalized_template(source_path, target_path):
 
         for target in slide_targets:
             slide_name = Path(target).name
-            remove_if_exists(tmp_root / "ppt" / target)
+            remove_if_exists(resolve_package_target(tmp_root, tmp_root / "ppt", target))
             remove_if_exists(tmp_root / "ppt/slides/_rels" / f"{slide_name}.rels")
 
         presentation = ET.parse(tmp_root / "ppt/presentation.xml")
