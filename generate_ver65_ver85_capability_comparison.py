@@ -18,6 +18,8 @@ NS = {
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
     "r": "http://schemas.openxmlformats.org/package/2006/relationships",
 }
+REMOVABLE_PRESENTATION_REL_SUFFIXES = ("/slide", "/printerSettings")
+SLIDE_OWNED_REL_SUFFIXES = ("/notesSlide", "/comments", "/commentAuthors", "/package", "/oleObject")
 
 
 def add_box(slide, x, y, w, h, text, *, fill, line, font_size=14, bold=False, color=None, radius=True, align=PP_ALIGN.CENTER):
@@ -115,6 +117,11 @@ def remove_matching(parent, predicate):
     return removed
 
 
+def is_removable_rel(rel, suffixes):
+    rel_type = rel.attrib.get("Type", "")
+    return any(rel_type.endswith(suffix) for suffix in suffixes)
+
+
 def write_normalized_template(source_path, target_path):
     with TemporaryDirectory() as tmp_dir:
         tmp_root = Path(tmp_dir)
@@ -133,19 +140,28 @@ def write_normalized_template(source_path, target_path):
         pres_rels = ET.parse(pres_rels_path)
         pres_rels_root = pres_rels.getroot()
         slide_targets = []
-        for rel in remove_matching(
-            pres_rels_root,
-            lambda rel: rel.attrib.get("Type", "").endswith("/slide")
-            or rel.attrib.get("Type", "").endswith("/printerSettings"),
-        ):
+        removed_part_names = set()
+        for rel in remove_matching(pres_rels_root, lambda rel: is_removable_rel(rel, REMOVABLE_PRESENTATION_REL_SUFFIXES)):
             if rel.attrib.get("Type", "").endswith("/slide"):
                 slide_targets.append(rel.attrib.get("Target", ""))
         pres_rels.write(pres_rels_path, encoding="utf-8", xml_declaration=True)
 
         for target in slide_targets:
             slide_name = Path(target).name
-            remove_if_exists(resolve_package_target(tmp_root, tmp_root / "ppt", target))
-            remove_if_exists(tmp_root / "ppt/slides/_rels" / f"{slide_name}.rels")
+            slide_part = resolve_package_target(tmp_root, tmp_root / "ppt", target)
+            slide_rel_path = tmp_root / "ppt/slides/_rels" / f"{slide_name}.rels"
+            if slide_rel_path.exists():
+                slide_rels = ET.parse(slide_rel_path)
+                slide_rels_root = slide_rels.getroot()
+                for rel in remove_matching(slide_rels_root, lambda rel: is_removable_rel(rel, SLIDE_OWNED_REL_SUFFIXES)):
+                    owned_target = rel.attrib.get("Target", "")
+                    owned_part = resolve_package_target(tmp_root, slide_rel_path.parent.parent, owned_target)
+                    remove_if_exists(owned_part)
+                    removed_part_names.add(f"/{owned_part.relative_to(tmp_root).as_posix()}")
+                slide_rels.write(slide_rel_path, encoding="utf-8", xml_declaration=True)
+            remove_if_exists(slide_part)
+            removed_part_names.add(f"/{slide_part.relative_to(tmp_root).as_posix()}")
+            remove_if_exists(slide_rel_path)
 
         presentation = ET.parse(tmp_root / "ppt/presentation.xml")
         presentation_root = presentation.getroot()
@@ -158,8 +174,7 @@ def write_normalized_template(source_path, target_path):
         content_types_path = tmp_root / "[Content_Types].xml"
         content_types = ET.parse(content_types_path)
         content_root = content_types.getroot()
-        slide_part_names = {f"/ppt/{target}" for target in slide_targets}
-        remove_matching(content_root, lambda override: override.attrib.get("PartName") in slide_part_names)
+        remove_matching(content_root, lambda override: override.attrib.get("PartName") in removed_part_names)
         content_types.write(content_types_path, encoding="utf-8", xml_declaration=True)
 
         with ZipFile(target_path, "w", compression=ZIP_DEFLATED, compresslevel=9) as archive:
